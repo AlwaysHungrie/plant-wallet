@@ -1,4 +1,4 @@
-import type { ParsedTerminalOutput, RawTerminalOutputType, UserAction } from "../types/terminal-types.js";
+import type { ParsedTerminalOutput, RawTerminalOutputType, USER_ACTION_TYPES } from "../types/terminal-types.js";
 
 export const sanitizeStringInput = (input: string): string => {
   return input.replace(/[\x00-\x1F\x7F]/g, "");
@@ -15,7 +15,7 @@ export const sanitizeOutputString = (input: string): string => {
 };
 
 export const extractOptions = (outputLines: string[]): { updatedOutputLines: string[], availableOptions: string[] } => {
-  const optionsStartIndex = outputLines.findIndex(line => line.startsWith(">"));
+  const optionsStartIndex = outputLines.findLastIndex(line => line.startsWith(">"));
   const options = outputLines.splice(optionsStartIndex)
 
   return { updatedOutputLines: outputLines, availableOptions: options };
@@ -49,10 +49,15 @@ export const parseRawOutput = (rawOutput: RawTerminalOutputType, terminalId: str
   if (lastLine.startsWith("↑/↓ navigate")) {
     const { updatedOutputLines, availableOptions } = extractOptions(outputLines);
 
+    let type: typeof USER_ACTION_TYPES[number] = "SELECT_OPTION";
+    if (lastLine.startsWith("↑/↓ navigate · Space toggle")) {
+      type = "SELECT_MULTIPLE_OPTIONS";
+    }
+
     return {
       output: updatedOutputLines.join("\n"),
       userAction: {
-        type: "SELECT_OPTION",
+        type,
         prompt: lastLine,
         terminalId,
         availableOptions,

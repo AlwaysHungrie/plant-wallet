@@ -1,5 +1,5 @@
 import { parseRawOutput } from "../../services/output-parsing.js";
-import { createTerminalProcess, getTerminalOutput, getTerminalProcess, enterPrompt, enterOption } from "../../services/terminal-service.js";
+import { createTerminalProcess, getTerminalOutput, getTerminalProcess, enterPrompt, enterOption, enterMultipleOptions } from "../../services/terminal-service.js";
 
 export const createWalletStart = async () => {
   const { terminalId, proc } = createTerminalProcess("zerion", ["wallet", "create"]);
@@ -50,6 +50,17 @@ export const selectPolicy = async (terminalId: string, option: number) => {
   }
 
   await enterOption(proc, option);
+  const terminalOutput = await getTerminalOutput(proc);
+  return parseRawOutput(terminalOutput, terminalId);
+};
+
+export const selectMultiplePolicies = async (terminalId: string, choices: boolean[]) => {
+  const proc = getTerminalProcess(terminalId);
+  if (!proc) {
+    throw new Error("Terminal not found");
+  }
+
+  await enterMultipleOptions(proc, choices);
   const terminalOutput = await getTerminalOutput(proc);
   return parseRawOutput(terminalOutput, terminalId);
 };

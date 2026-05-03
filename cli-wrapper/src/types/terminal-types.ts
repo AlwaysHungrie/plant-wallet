@@ -1,4 +1,4 @@
-const USER_ACTION_TYPES = ['TEXT_INPUT', 'SELECT_OPTION'] as const;
+export const USER_ACTION_TYPES = ['TEXT_INPUT', 'SELECT_OPTION', 'SELECT_MULTIPLE_OPTIONS'] as const;
 
 export type RawTerminalOutputType = {
   output: string;
