@@ -3,6 +3,8 @@ import pty from "node-pty";
 import { randomUUID } from "crypto";
 import { TERMINAL_MAX_IDLE, TERMINAL_MAX_WAIT, TERMINAL_MAX_LIFE } from "../constants/config.js";
 import { SYSTEM_MESSAGES } from "../constants/system-messages.js";
+import type { RawTerminalOutputType } from "../types/terminal-types.js";
+import { sanitizeStringInput } from "./output-parsing.js";
 
 const terminalMap = new Map<string, { proc: pty.IPty, timer: NodeJS.Timeout }>();
 
@@ -13,7 +15,8 @@ export const createTerminalProcess = (command: string,
   const cmdline = [command, ...args].map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
   const shellArgs = isWin ? ["-Command", cmdline] : ["-lc", cmdline];
 
-  const terminalId = randomUUID();
+  // const terminalId = randomUUID();
+  const terminalId = "8eebf62f-136b-49fe-a7fc-4ec8e2e46b91";
 
   const proc = pty.spawn(shell, shellArgs, {
     name: "xterm-color",
@@ -69,42 +72,103 @@ export const getTerminalProcess = (terminalId: string): pty.IPty | undefined => 
  * @param proc - The terminal process to listen to.
  * @returns An object containing the accumulated output and status flags.
  */
-export const getTerminalOutput = async (proc: pty.IPty): Promise<{ output: string, timed_out: boolean, has_ended: boolean, is_printing: boolean }> => {
+export const getTerminalOutput = async (proc: pty.IPty): Promise<RawTerminalOutputType> => {
   let buffer = "";
-  let last_output = Date.now();
-  const start_time = Date.now();
-  let has_ended = false;
+  let lastOutputTime = Date.now();
+  const startTime = Date.now();
+  let hasEnded = false;
 
   const disposableData = proc.onData((data) => {
     buffer += data;
-    last_output = Date.now();
+    lastOutputTime = Date.now();
   });
 
   const disposableExit = proc.onExit(() => {
-    has_ended = true;
+    hasEnded = true;
   });
 
   while (true) {
-    if (has_ended) {
+    if (hasEnded) {
       disposableData.dispose();
       disposableExit.dispose();
-      return { output: buffer, timed_out: false, has_ended: true, is_printing: false };
+      return { output: buffer, hasEnded: true, isPrinting: false, isIdle: false };
     }
 
     const now = Date.now();
-    const is_idle = now - last_output >= TERMINAL_MAX_IDLE;
-    const is_timeout = now - start_time >= TERMINAL_MAX_WAIT;
+    const isIdle = now - lastOutputTime >= TERMINAL_MAX_IDLE;
+    const isTimeout = now - startTime >= TERMINAL_MAX_WAIT;
 
-    if (is_idle || is_timeout) {
+    if (isIdle || isTimeout) {
       disposableData.dispose();
       disposableExit.dispose();
       return {
         output: buffer,
-        timed_out: is_timeout,
-        has_ended: false,
-        is_printing: !is_idle
+        hasEnded,
+        isIdle,
+        isPrinting: !isIdle
       };
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
+
+/**
+ * Write string to terminal character by character, waiting for each to be registered.
+ * Ends with a carriage return.
+ * @param proc - The terminal process to write to.
+ * @param stringInput - The string to write to the terminal.
+ */
+export const enterPrompt = async (proc: pty.IPty, stringInput: string): Promise<void> => {
+  // Sanitize input to remove control characters (0x00-0x1F, 0x7F)
+  const sanitized = sanitizeStringInput(stringInput);
+
+  // Write each character individually and wait for it to be "registered" (echoed or timeout)
+  for (const char of sanitized) {
+    await new Promise<void>((resolve) => {
+      const disposable = proc.onData(() => {
+        disposable.dispose();
+        resolve();
+      });
+      proc.write(char);
+
+      // Fallback timeout in case there's no echo/output for the character
+      setTimeout(() => {
+        disposable.dispose();
+        resolve();
+      }, 100);
+    });
+  }
+
+  // Final enter
+  proc.write("\r");
+};
+
+/**
+ * Select an option from the terminal using down arrow key, waiting for each arrow key to be "registered" (echoed or timeout).
+ * Ends with a carriage return.
+ * @param proc - The terminal process to write to.
+ * @param optionIndex - The index of the option to select.
+ */
+export const enterOption = async (proc: pty.IPty, optionIndex: number): Promise<void> => {
+  const downArrow = "\u001b[B";
+
+  // Write each character individually and wait for it to be "registered" (echoed or timeout)
+  for (let i = 0; i < optionIndex - 1; i++) {
+    await new Promise<void>((resolve) => {
+      const disposable = proc.onData(() => {
+        disposable.dispose();
+        resolve();
+      });
+      proc.write(downArrow);
+
+      // Fallback timeout in case there's no echo/output for the character
+      setTimeout(() => {
+        disposable.dispose();
+        resolve();
+      }, 100);
+    });
+  }
+
+  // Final enter
+  proc.write("\r");
+};

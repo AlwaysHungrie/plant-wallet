@@ -1,19 +1,19 @@
-import { createTerminalProcess, getTerminalOutput, terminateTerminalProcess, getTerminalProcess } from "../../services/terminal-service.js";
+import { parseRawOutput } from "../../services/output-parsing.js";
+import { createTerminalProcess, getTerminalOutput, getTerminalProcess, enterPrompt, enterOption } from "../../services/terminal-service.js";
 
 export const createWalletStart = async () => {
   const { terminalId, proc } = createTerminalProcess("zerion", ["wallet", "create"]);
-  const { output, timed_out, has_ended, is_printing } = await getTerminalOutput(proc);
+  const terminalOutput = await getTerminalOutput(proc);
 
-  if (is_printing) {
-    throw new Error("Terminal is still printing");
+  const response = parseRawOutput(terminalOutput, terminalId);
+
+  console.log(response);
+
+  if (response.userAction && response.userAction.prompt === "Enter passphrase:") {
+    return response;
   }
 
-  if (!timed_out && !has_ended) {
-    return {
-      output,
-      terminalId
-    }
-  }
+  throw new Error("Error creating wallet");
 }
 
 export const enterPassphrase = async (terminalId: string, passphrase: string) => {
@@ -21,7 +21,35 @@ export const enterPassphrase = async (terminalId: string, passphrase: string) =>
   if (!proc) {
     throw new Error("Terminal not found");
   }
-  proc.write(passphrase + "\n");
-  const { output, timed_out, has_ended, is_printing } = await getTerminalOutput(proc);
-  return { output, timed_out, has_ended, is_printing }
-}
+
+  await enterPrompt(proc, passphrase);
+  const terminalOutput = await getTerminalOutput(proc);
+  const response = parseRawOutput(terminalOutput, terminalId);
+
+  if (response.userAction?.prompt !== "Confirm passphrase:") {
+    throw new Error("Error creating wallet");
+  }
+
+  await enterPrompt(proc, passphrase);
+  const terminalOutput2 = await getTerminalOutput(proc);
+  const response2 = parseRawOutput(terminalOutput2, terminalId);
+
+  if (response2.userAction?.prompt !== "Have you backed up the passphrase? Type YES to confirm:") {
+    throw new Error("Error creating wallet");
+  }
+
+  await enterPrompt(proc, "YES");
+  const terminalOutput3 = await getTerminalOutput(proc);
+  return parseRawOutput(terminalOutput3, terminalId);
+};
+
+export const selectPolicy = async (terminalId: string, policy: number) => {
+  const proc = getTerminalProcess(terminalId);
+  if (!proc) {
+    throw new Error("Terminal not found");
+  }
+
+  await enterOption(proc, policy);
+  const terminalOutput = await getTerminalOutput(proc);
+  return parseRawOutput(terminalOutput, terminalId);
+};
