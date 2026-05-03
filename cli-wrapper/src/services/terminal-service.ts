@@ -183,37 +183,16 @@ export const enterMultipleOptions = async (proc: pty.IPty, choices: boolean[]): 
   const downArrow = "\u001b[B";
   const spaceBar = " ";
 
-  // Write each character individually and wait for it to be "registered" (echoed or timeout)
   for (let i = 0; i < choices.length; i++) {
     if (choices[i]) {
-      await new Promise<void>((resolve) => {
-        const disposable = proc.onData(() => {
-          disposable.dispose();
-          resolve();
-        });
-        proc.write(spaceBar);
-
-        // Fallback timeout in case there's no echo/output for the character
-        setTimeout(() => {
-          disposable.dispose();
-          resolve();
-        }, 100);
-      });
+      proc.write(spaceBar);
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
-    await new Promise<void>((resolve) => {
-      const disposable = proc.onData(() => {
-        disposable.dispose();
-        resolve();
-      });
+    if (i < choices.length - 1) {
       proc.write(downArrow);
-
-      // Fallback timeout in case there's no echo/output for the character
-      setTimeout(() => {
-        disposable.dispose();
-        resolve();
-      }, 100);
-    });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
   }
 
   // Final enter
