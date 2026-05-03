@@ -1,5 +1,9 @@
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
+import { isZerionInstalled } from './lib/zerion-check.js';
+
+// check if zerion is installed 
+isZerionInstalled();
 
 const app = new Hono()
 
