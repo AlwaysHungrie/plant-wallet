@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { ParsedTerminalOutput, UserAction } from "@/lib/types";
 import {
-  createWallet,
+  runWalletCommand,
   sendTextInput,
   selectOption,
   selectMultiple,
@@ -20,7 +20,6 @@ type CompletedStep = {
   kind: StepKind;
   prompt: string;
   options?: string[];
-  // what the user submitted
   textAnswer?: string;
   selectedIndex?: number;
   multiSelected?: boolean[];
@@ -37,14 +36,22 @@ type LogEntry = {
   expanded: boolean;
 };
 
+type ParamField = {
+  key: string;
+  flag: string;
+  label: string;
+  placeholder: string;
+  required: boolean;
+};
+
 type Command = {
   id: string;
   label: string;
   category: string;
-  method: string;
-  path: string;
+  subcommand: string;
   description: string;
-  params: string;
+  params: ParamField[];
+  staticArgs?: string[];
 };
 
 // ─── Commands registry ───────────────────────────────────────────────────────
@@ -54,34 +61,203 @@ const COMMANDS: Command[] = [
     id: "wallet-create",
     label: "Create Wallet",
     category: "Wallet",
-    method: "POST",
-    path: "/wallet/create",
+    subcommand: "create",
     description:
-      "Initialize a new HD wallet. Starts an interactive CLI session that guides through passphrase setup and network selection.",
-    params: "No parameters required.",
+      "Create a new encrypted HD wallet (EVM + Solana). Guides through passphrase setup and network selection.",
+    params: [
+      {
+        key: "name",
+        flag: "--name",
+        label: "Wallet Name",
+        placeholder: "e.g. trading-bot",
+        required: true,
+      },
+    ],
+  },
+  {
+    id: "wallet-import-evm",
+    label: "Import (EVM Key)",
+    category: "Wallet",
+    subcommand: "import",
+    description: "Import a wallet from an EVM private key (interactive).",
+    params: [
+      {
+        key: "name",
+        flag: "--name",
+        label: "Wallet Name",
+        placeholder: "e.g. old-wallet",
+        required: true,
+      },
+    ],
+    staticArgs: ["--evm-key"],
+  },
+  {
+    id: "wallet-import-sol",
+    label: "Import (Solana Key)",
+    category: "Wallet",
+    subcommand: "import",
+    description: "Import a wallet from a Solana private key (interactive).",
+    params: [
+      {
+        key: "name",
+        flag: "--name",
+        label: "Wallet Name",
+        placeholder: "e.g. sol-bot",
+        required: true,
+      },
+    ],
+    staticArgs: ["--sol-key"],
+  },
+  {
+    id: "wallet-import-mnemonic",
+    label: "Import (Mnemonic)",
+    category: "Wallet",
+    subcommand: "import",
+    description: "Import a wallet from a seed phrase — restores all chains.",
+    params: [
+      {
+        key: "name",
+        flag: "--name",
+        label: "Wallet Name",
+        placeholder: "e.g. backup",
+        required: true,
+      },
+    ],
+    staticArgs: ["--mnemonic"],
+  },
+  {
+    id: "wallet-list",
+    label: "List Wallets",
+    category: "Wallet",
+    subcommand: "list",
+    description: "List all wallets managed by Zerion CLI.",
+    params: [],
+  },
+  {
+    id: "wallet-fund",
+    label: "Fund Wallet",
+    category: "Wallet",
+    subcommand: "fund",
+    description: "Show deposit addresses for funding a wallet.",
+    params: [
+      {
+        key: "wallet",
+        flag: "--wallet",
+        label: "Wallet Name",
+        placeholder: "e.g. trading-bot",
+        required: true,
+      },
+    ],
+  },
+  {
+    id: "wallet-backup",
+    label: "Backup Wallet",
+    category: "Wallet",
+    subcommand: "backup",
+    description: "Export the recovery phrase for a wallet.",
+    params: [
+      {
+        key: "wallet",
+        flag: "--wallet",
+        label: "Wallet Name",
+        placeholder: "e.g. trading-bot",
+        required: true,
+      },
+    ],
+  },
+  {
+    id: "wallet-delete",
+    label: "Delete Wallet",
+    category: "Wallet",
+    subcommand: "delete",
+    description:
+      "Permanently delete a wallet. Requires passphrase confirmation.",
+    params: [
+      {
+        key: "name",
+        flag: "",
+        label: "Wallet Name",
+        placeholder: "e.g. trading-bot",
+        required: true,
+      },
+    ],
+  },
+  {
+    id: "wallet-sync",
+    label: "Sync Wallet",
+    category: "Wallet",
+    subcommand: "sync",
+    description: "Sync a wallet to the Zerion app via QR code.",
+    params: [
+      {
+        key: "wallet",
+        flag: "--wallet",
+        label: "Wallet Name",
+        placeholder: "e.g. trading-bot",
+        required: true,
+      },
+    ],
+  },
+  {
+    id: "wallet-sync-all",
+    label: "Sync All Wallets",
+    category: "Wallet",
+    subcommand: "sync",
+    description: "Sync all wallets to the Zerion app via QR code.",
+    params: [],
+    staticArgs: ["--all"],
   },
 ];
 
-let uid = 0;
+// ─── Build args from param values ────────────────────────────────────────────
+
+function buildArgs(
+  command: Command,
+  paramValues: Record<string, string>,
+): string[] {
+  const args: string[] = [];
+  for (const p of command.params) {
+    const val = paramValues[p.key]?.trim();
+    if (val) {
+      if (p.flag) {
+        args.push(p.flag, val);
+      } else {
+        args.push(val);
+      }
+    }
+  }
+  return [...args, ...(command.staticArgs ?? [])];
+}
 
 // ─── JSON syntax highlighter ─────────────────────────────────────────────────
 
 function highlightJSON(obj: unknown): string {
+  if (obj === undefined) return "";
   const json = JSON.stringify(obj, null, 2);
+  if (!json) return "";
+
   return json
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
     .replace(
-      /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(?=\s*:))/g,
-      '<span style="color: #7c3aed;">$1</span>',
-    )
-    .replace(
-      /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(?!\s*:))/g,
-      '<span style="color: #16a34a;">$1</span>',
-    )
-    .replace(
-      /\b(\d+\.?\d*)\b/g,
-      '<span style="color: var(--color-blue-600);">$1</span>',
-    )
-    .replace(/\b(true|false)\b/g, '<span style="color: #ea580c;">$1</span>');
+      /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+      (match) => {
+        if (/^"/.test(match)) {
+          if (/:$/.test(match)) {
+            return `<span style="color: #7c3aed;">${match.replace(/:$/, "")}</span>:`;
+          }
+          return `<span style="color: #16a34a;">${match}</span>`;
+        }
+        if (/true|false/.test(match)) {
+          return `<span style="color: #ea580c;">${match}</span>`;
+        }
+        if (/null/.test(match)) {
+          return `<span style="color: #a1a1aa;">${match}</span>`;
+        }
+        return `<span style="color: #2563eb;">${match}</span>`;
+      },
+    );
 }
 
 // ─── Frozen step (read-only history) ─────────────────────────────────────────
@@ -348,12 +524,14 @@ export default function Home() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [currentAction, setCurrentAction] = useState<UserAction | null>(null);
   const [completedSteps, setCompletedSteps] = useState<CompletedStep[]>([]);
+  const [paramValues, setParamValues] = useState<Record<string, string>>({});
   const [textValue, setTextValue] = useState("");
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [multiChoices, setMultiChoices] = useState<boolean[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [outputLines, setOutputLines] = useState<string[]>([]);
   const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -377,7 +555,7 @@ export default function Home() {
       path: string,
       body: Record<string, unknown> | null,
     ): number => {
-      const id = uid++;
+      const id = Date.now();
       const time = new Date().toLocaleTimeString("en-US", {
         hour12: false,
         hour: "2-digit",
@@ -421,10 +599,13 @@ export default function Home() {
 
   function handleResponse(data: ParsedTerminalOutput) {
     if (data.output?.trim()) {
-      setOutputLines((prev) => [
-        ...prev,
-        ...data.output.trim().split("\n").filter(Boolean),
-      ]);
+      setOutputLines((prev) => [...prev, ...data.output.trim().split("\n")]);
+    }
+    if (data.error) {
+      setErrorMessage(data.error);
+      setPhase("error");
+      setCurrentAction(null);
+      return;
     }
     if (!data.userAction) {
       setPhase("done");
@@ -446,22 +627,33 @@ export default function Home() {
   // ── Freeze current step then submit ──
 
   function freezeStep(partial: Omit<CompletedStep, "id">) {
-    setCompletedSteps((prev) => [...prev, { ...partial, id: uid++ }]);
+    setCompletedSteps((prev) => [...prev, { ...partial, id: Date.now() }]);
   }
 
   // ── Actions ──
+
+  function canRun(): boolean {
+    return activeCommand.params
+      .filter((p) => p.required)
+      .every((p) => (paramValues[p.key] ?? "").trim().length > 0);
+  }
 
   async function handleRun() {
     setPhase("loading");
     setOutputLines([]);
     setCompletedSteps([]);
-    const entryId = addLogEntry("POST", "/wallet/create", null);
+    setErrorMessage(null);
+    const args = buildArgs(activeCommand, paramValues);
+    const body = { subcommand: activeCommand.subcommand, args };
+    const entryId = addLogEntry("POST", "/wallet/run", body);
     try {
-      const data = await createWallet();
+      const data = await runWalletCommand(activeCommand.subcommand, args);
       updateLogEntry(entryId, data, "ok");
       handleResponse(data);
     } catch (e: unknown) {
-      updateLogEntry(entryId, { error: (e as Error).message }, "err");
+      const msg = (e as Error).message;
+      updateLogEntry(entryId, { error: msg }, "err");
+      setErrorMessage(msg);
       setPhase("error");
     }
   }
@@ -478,7 +670,9 @@ export default function Home() {
       freezeStep({ kind: "text_input", prompt, textAnswer: textValue });
       handleResponse(data);
     } catch (e: unknown) {
-      updateLogEntry(entryId, { error: (e as Error).message }, "err");
+      const msg = (e as Error).message;
+      updateLogEntry(entryId, { error: msg }, "err");
+      setErrorMessage(msg);
       setPhase("error");
     } finally {
       setSubmitting(false);
@@ -505,7 +699,9 @@ export default function Home() {
       });
       handleResponse(data);
     } catch (e: unknown) {
-      updateLogEntry(entryId, { error: (e as Error).message }, "err");
+      const msg = (e as Error).message;
+      updateLogEntry(entryId, { error: msg }, "err");
+      setErrorMessage(msg);
       setPhase("error");
     } finally {
       setSubmitting(false);
@@ -532,7 +728,9 @@ export default function Home() {
       });
       handleResponse(data);
     } catch (e: unknown) {
-      updateLogEntry(entryId, { error: (e as Error).message }, "err");
+      const msg = (e as Error).message;
+      updateLogEntry(entryId, { error: msg }, "err");
+      setErrorMessage(msg);
       setPhase("error");
     } finally {
       setSubmitting(false);
@@ -547,10 +745,12 @@ export default function Home() {
     setTextValue("");
     setSelectedOption(null);
     setMultiChoices([]);
+    setErrorMessage(null);
   }
 
   function handleCommandSelect(id: string) {
     setActiveCommandId(id);
+    setParamValues({});
     resetCommand();
   }
 
@@ -598,18 +798,62 @@ export default function Home() {
         {/* Endpoint */}
         <div className="flex items-center gap-2 mb-6 px-3.5 py-2.5 bg-zinc-50 border border-zinc-200 rounded-md font-mono text-[12px] text-zinc-500">
           <span className="inline-flex items-center font-mono text-[11px] font-semibold px-2 py-0.5 rounded border tracking-wide bg-blue-50 text-blue-600 border-blue-200">
-            {activeCommand.method}
+            POST
           </span>
-          <span>{activeCommand.path}</span>
+          <span>/wallet/run</span>
+          <span className="ml-2 text-zinc-400">
+            zerion wallet {activeCommand.subcommand}
+            {activeCommand.staticArgs
+              ? " " + activeCommand.staticArgs.join(" ")
+              : ""}
+          </span>
         </div>
 
         {/* Parameters */}
-        <div className="mb-7">
-          <div className="text-[13px] font-semibold text-zinc-950 mb-3.5 flex items-center gap-2 after:content-[''] after:flex-1 after:h-[1px] after:bg-zinc-200">
-            Parameters
+        {activeCommand.params.length > 0 && (
+          <div className="mb-7">
+            <div className="text-[13px] font-semibold text-zinc-950 mb-3.5 flex items-center gap-2 after:content-[''] after:flex-1 after:h-[1px] after:bg-zinc-200">
+              Parameters
+            </div>
+            <div className="flex flex-col gap-3 max-w-[400px]">
+              {activeCommand.params.map((p) => (
+                <div key={p.key}>
+                  <label className="block text-[12px] font-medium text-zinc-500 mb-1.5">
+                    {p.label}
+                    {p.required && <span className="text-red-400 ml-1">*</span>}
+                    {p.flag && (
+                      <span className="ml-2 font-mono text-[11px] text-zinc-400 font-normal">
+                        {p.flag}
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-zinc-200 rounded-md text-[13px] font-sans text-zinc-950 bg-white outline-none transition-all focus:border-zinc-400 focus:ring-4 focus:ring-zinc-100 placeholder:text-zinc-400"
+                    placeholder={p.placeholder}
+                    value={paramValues[p.key] ?? ""}
+                    onChange={(e) =>
+                      setParamValues((prev) => ({
+                        ...prev,
+                        [p.key]: e.target.value,
+                      }))
+                    }
+                    disabled={phase !== "idle"}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
-          <p className="text-[13px] text-zinc-400">{activeCommand.params}</p>
-        </div>
+        )}
+
+        {activeCommand.params.length === 0 && (
+          <div className="mb-7">
+            <div className="text-[13px] font-semibold text-zinc-950 mb-3.5 flex items-center gap-2 after:content-[''] after:flex-1 after:h-[1px] after:bg-zinc-200">
+              Parameters
+            </div>
+            <p className="text-[13px] text-zinc-400">No parameters required.</p>
+          </div>
+        )}
 
         <div className="h-[1px] bg-zinc-200 my-7" />
 
@@ -628,7 +872,7 @@ export default function Home() {
               {outputLines.map((line, i) => (
                 <div
                   key={i}
-                  className="font-mono text-[12px] leading-relaxed text-zinc-500 whitespace-pre-wrap"
+                  className="text-[12px] font-mono leading-snug text-zinc-500 whitespace-break-spaces break-all"
                 >
                   {line}
                 </div>
@@ -647,6 +891,7 @@ export default function Home() {
               <button
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium cursor-pointer transition-all border border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800 hover:border-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
                 onClick={handleRun}
+                disabled={!canRun()}
               >
                 <svg
                   width="13"
@@ -866,10 +1111,7 @@ export default function Home() {
             <div className="animate-slide-in">
               <div className="flex gap-2.5 px-3.5 py-3 rounded-md text-[13px] leading-relaxed mb-4 bg-green-50 border border-green-200 text-green-700">
                 <span className="text-[14px] flex-shrink-0 mt-[1px]">✓</span>
-                <span>
-                  Wallet created successfully. Store your passphrase somewhere
-                  safe — it cannot be recovered.
-                </span>
+                <span>Command completed successfully.</span>
               </div>
               <button
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium cursor-pointer transition-all bg-transparent text-zinc-600 border border-zinc-200 hover:bg-zinc-100 hover:text-zinc-950"
@@ -886,11 +1128,29 @@ export default function Home() {
               <div className="flex gap-2.5 px-3.5 py-3 rounded-md text-[13px] leading-relaxed mb-4 bg-red-50 border border-red-200 text-red-700">
                 <span className="text-[14px] flex-shrink-0 mt-[1px]">✗</span>
                 <span>
-                  Request failed. Make sure the CLI server is running on{" "}
-                  <code className="font-mono text-[12px] bg-red-100 px-1 py-0.5 rounded">
-                    localhost:3000
-                  </code>
-                  .
+                  {errorMessage === "TERMINAL_NOT_FOUND" ? (
+                    <>
+                      Session expired — the CLI process was terminated. Start a
+                      new session.
+                    </>
+                  ) : errorMessage === "TERMINAL_EXITED" ? (
+                    <>CLI process exited unexpectedly. Start a new session.</>
+                  ) : errorMessage === "TERMINAL_TIMEOUT" ? (
+                    <>
+                      CLI process timed out waiting for a response. Start a new
+                      session.
+                    </>
+                  ) : errorMessage ? (
+                    <>{errorMessage}</>
+                  ) : (
+                    <>
+                      Request failed. Make sure the CLI server is running on{" "}
+                      <code className="font-mono text-[12px] bg-red-100 px-1 py-0.5 rounded">
+                        localhost:3000
+                      </code>
+                      .
+                    </>
+                  )}
                 </span>
               </div>
               <button

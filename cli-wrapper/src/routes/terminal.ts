@@ -9,7 +9,7 @@ terminalRoutes.post('/text-input', async (c) => {
   const { terminalId, textInput } = await c.req.json();
   const proc = getTerminalProcess(terminalId);
   if (!proc) {
-    throw new Error("Terminal not found");
+    return c.json({ error: "TERMINAL_NOT_FOUND" }, 410);
   }
 
   await enterPrompt(proc, textInput);
@@ -23,7 +23,7 @@ terminalRoutes.post('/select-option', async (c) => {
   const { terminalId, option } = await c.req.json();
   const proc = getTerminalProcess(terminalId);
   if (!proc) {
-    throw new Error("Terminal not found");
+    return c.json({ error: "TERMINAL_NOT_FOUND" }, 410);
   }
 
   await enterOption(proc, option);
@@ -37,7 +37,7 @@ terminalRoutes.post('/select-multiple', async (c) => {
   const { terminalId, choices } = await c.req.json();
   const proc = getTerminalProcess(terminalId);
   if (!proc) {
-    throw new Error("Terminal not found");
+    return c.json({ error: "TERMINAL_NOT_FOUND" }, 410);
   }
 
   await enterMultipleOptions(proc, choices);

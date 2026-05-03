@@ -12,6 +12,11 @@ const app = new Hono()
 
 app.use('*', cors())
 
+app.onError((err, c) => {
+  console.error(err);
+  return c.json({ error: err.message }, 500);
+})
+
 app.get('/', (c) => {
   return c.text('Hello Hono!')
 })

@@ -22,13 +22,21 @@ export const extractOptions = (outputLines: string[]): { updatedOutputLines: str
 }
 
 export const parseRawOutput = (rawOutput: RawTerminalOutputType, terminalId: string): ParsedTerminalOutput => {
-  const { output: rawOutputString, hasEnded, isPrinting, isIdle } = rawOutput;
+  const { output: rawOutputString, hasEnded, isPrinting } = rawOutput;
 
   const sanitizedOutput = sanitizeOutputString(rawOutputString);
 
   console.log("sanitizedOutput", sanitizedOutput);
 
   const outputLines = sanitizedOutput.split("\n").map(line => line.trim()).filter(line => line.length > 0);
+
+  if (outputLines.length === 0) {
+    if (hasEnded) {
+      return { output: sanitizedOutput, error: "TERMINAL_EXITED" };
+    }
+    return { output: sanitizedOutput };
+  }
+
   const lastLine = outputLines.splice(outputLines.length - 1)[0];
 
   console.log("lastLine", lastLine, lastLine?.startsWith("↑/↓ navigate"));
@@ -63,6 +71,10 @@ export const parseRawOutput = (rawOutput: RawTerminalOutputType, terminalId: str
         availableOptions,
       }
     }
+  }
+
+  if (isPrinting) {
+    return { output: sanitizedOutput, error: "TERMINAL_TIMEOUT" };
   }
 
   return {

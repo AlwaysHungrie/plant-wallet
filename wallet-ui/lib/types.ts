@@ -10,4 +10,5 @@ export type UserAction = {
 export type ParsedTerminalOutput = {
   output: string;
   userAction?: UserAction;
+  error?: string;
 };
