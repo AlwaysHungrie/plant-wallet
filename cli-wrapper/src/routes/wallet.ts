@@ -18,7 +18,8 @@ walletRoutes.post('/passphrase', async (c) => {
 
 // curl -X POST http://localhost:3000/wallet/select-policy -H "Content-Type: application/json" -d "{\"terminalId\": \"8eebf62f-136b-49fe-a7fc-4ec8e2e46b91\", \"policy\": 1}"
 walletRoutes.post('/select-policy', async (c) => {
-  const { terminalId, policy } = await c.req.json();
-  const result = await selectPolicy(terminalId, policy);
+  const { terminalId, policy, option } = await c.req.json();
+  const index = option !== undefined ? option : policy;
+  const result = await selectPolicy(terminalId, index);
   return c.json(result);
 });

@@ -153,7 +153,7 @@ export const enterOption = async (proc: pty.IPty, optionIndex: number): Promise<
   const downArrow = "\u001b[B";
 
   // Write each character individually and wait for it to be "registered" (echoed or timeout)
-  for (let i = 0; i < optionIndex - 1; i++) {
+  for (let i = 0; i < optionIndex; i++) {
     await new Promise<void>((resolve) => {
       const disposable = proc.onData(() => {
         disposable.dispose();

@@ -43,13 +43,13 @@ export const enterPassphrase = async (terminalId: string, passphrase: string) =>
   return parseRawOutput(terminalOutput3, terminalId);
 };
 
-export const selectPolicy = async (terminalId: string, policy: number) => {
+export const selectPolicy = async (terminalId: string, option: number) => {
   const proc = getTerminalProcess(terminalId);
   if (!proc) {
     throw new Error("Terminal not found");
   }
 
-  await enterOption(proc, policy);
+  await enterOption(proc, option);
   const terminalOutput = await getTerminalOutput(proc);
   return parseRawOutput(terminalOutput, terminalId);
 };

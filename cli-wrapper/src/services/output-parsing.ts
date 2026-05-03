@@ -30,7 +30,9 @@ export const parseRawOutput = (rawOutput: RawTerminalOutputType, terminalId: str
 
   const outputLines = sanitizedOutput.split("\n").map(line => line.trim()).filter(line => line.length > 0);
   const lastLine = outputLines.splice(outputLines.length - 1)[0];
-  console.log("lastLine", lastLine, lastLine.startsWith("↑/↓ navigate"));
+
+  console.log("lastLine", lastLine, lastLine?.startsWith("↑/↓ navigate"));
+
   const output = outputLines.join("\n");
 
   if (lastLine.endsWith(":")) {
