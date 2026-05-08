@@ -1,53 +1,50 @@
 # cli-wrapper
 
-HTTP API wrapper for the Zerion CLI. Every CLI command — including interactive ones that prompt for passphrases, numbered selections, and multi-select menus — is accessible as a JSON HTTP endpoint.
+Hono HTTP server that runs Zerion CLI commands via `node-pty`. Exposes both non-interactive commands and interactive ones (passphrase prompts, numbered menus, multi-select) as JSON endpoints.
 
-This means Telegram bots, Discord bots, Claude, OpenAI agents, and any other application can use the same Zerion wallet infrastructure that a local developer would use from a terminal. No CLI knowledge required. All state and keys stay local.
+Useful when you want to drive wallet operations from an agent, a bot, or a web backend without shelling out to the CLI yourself.
 
 ---
 
-## Prerequisites
+## Requirements
 
 - Node.js ≥ 20
-- Zerion CLI installed globally:
-  ```bash
-  npm install -g zerion-cli
-  ```
+- `zerion-cli` installed globally
+
+```bash
+npm install -g zerion-cli
+```
 
 ---
 
-## Install & run
+## Running
 
 ```bash
-cd cli-wrapper
 npm install
 npm run dev
 ```
 
-Server starts at `http://localhost:3000`.
+Listens on `http://localhost:3000`.
 
 ---
 
-## How interactive commands work
+## Interactive commands
 
-Some CLI commands (e.g. `wallet create`) are interactive — they ask for a passphrase, present a list of options, or show multi-select checkboxes. The wrapper handles these via a stateful terminal session:
+Some CLI commands open a prompt loop — passphrases, choice menus, checkboxes. The wrapper models these as stateful terminal sessions:
 
-1. Start a command with `POST /wallet/run`. The response includes a `terminalId` and the initial prompt.
-2. Respond to prompts by posting to the `/terminal/*` endpoints with the same `terminalId`.
-3. Keep responding until the terminal session closes (no `terminalId` in response).
+1. `POST /wallet/run` starts the command and returns a `terminalId` plus the first output chunk.
+2. Use the `/terminal/*` endpoints with that `terminalId` to respond to each prompt.
+3. When the session ends, responses no longer include `terminalId`.
 
 ---
 
 ## API
 
-All responses are JSON. Interactive commands return `{ terminalId, output, done }` — use `terminalId` for follow-up calls. Non-interactive commands return the parsed CLI JSON output directly.
+### `POST /wallet/run`
 
-### Wallet commands
+Runs a `zerion wallet` subcommand. Subcommands: `create`, `import`, `list`, `fund`, `backup`, `delete`, `sync`.
 
-#### `POST /wallet/run`
-
-Run any `zerion wallet` subcommand.
-
+**Body**
 ```json
 {
   "subcommand": "create",
@@ -58,21 +55,16 @@ Run any `zerion wallet` subcommand.
 ```bash
 curl -X POST http://localhost:3000/wallet/run \
   -H "Content-Type: application/json" \
-  -d '{"subcommand":"create","args":["--name","trading-bot"]}'
+  -d '{"subcommand":"list"}'
 ```
-
-Available subcommands mirror the CLI: `create`, `import`, `list`, `fund`, `backup`, `delete`, `sync`.
 
 ---
 
-### Terminal (interactive) commands
+### `POST /terminal/text-input`
 
-Use these to respond to prompts in an active terminal session.
+Sends a text response to an active prompt (passphrase, free-form input).
 
-#### `POST /terminal/text-input`
-
-Submit free text — passphrases, names, addresses.
-
+**Body**
 ```json
 {
   "terminalId": "8eebf62f-136b-49fe-a7fc-4ec8e2e46b91",
@@ -80,16 +72,13 @@ Submit free text — passphrases, names, addresses.
 }
 ```
 
-```bash
-curl -X POST http://localhost:3000/terminal/text-input \
-  -H "Content-Type: application/json" \
-  -d '{"terminalId":"<id>","textInput":"my-passphrase"}'
-```
+---
 
-#### `POST /terminal/select-option`
+### `POST /terminal/select-option`
 
-Pick from a numbered list (0-indexed).
+Selects one item from a numbered list (0-indexed).
 
+**Body**
 ```json
 {
   "terminalId": "8eebf62f-136b-49fe-a7fc-4ec8e2e46b91",
@@ -97,10 +86,13 @@ Pick from a numbered list (0-indexed).
 }
 ```
 
-#### `POST /terminal/select-multiple`
+---
 
-Submit multi-select checkboxes as a boolean array (one entry per option).
+### `POST /terminal/select-multiple`
 
+Submits a multi-select response. `choices` is a boolean array with one entry per option.
+
+**Body**
 ```json
 {
   "terminalId": "8eebf62f-136b-49fe-a7fc-4ec8e2e46b91",
@@ -112,18 +104,18 @@ Submit multi-select checkboxes as a boolean array (one entry per option).
 
 ## Environment variables
 
-No environment variables required by cli-wrapper itself. The server inherits the parent shell's environment, so any variables needed by the CLI (e.g. `ZERION_API_KEY`) pass through automatically.
+cli-wrapper itself requires no environment variables. The server inherits the shell environment, so variables like `ZERION_API_KEY` are passed through to CLI subprocesses automatically.
 
-| Variable | Set by | Purpose |
+| Variable | Source | Purpose |
 |----------|--------|---------|
-| `ZERION_API_KEY` | Shell / `.env` | Zerion API authentication (passed to CLI) |
+| `ZERION_API_KEY` | Shell / parent env | Zerion API auth, forwarded to CLI |
 
 ---
 
 ## Scripts
 
-| Script | Command |
-|--------|---------|
-| `npm run dev` | `tsx watch src/index.ts` — hot reload |
-| `npm run build` | `tsc` — compile to `dist/` |
-| `npm start` | `node dist/index.js` — production |
+```
+npm run dev      tsx watch src/index.ts
+npm run build    tsc
+npm start        node dist/index.js
+```

@@ -1,6 +1,6 @@
 # plant-wallet
 
-Autonomous Solana stablecoin wallet. Splits your USDC holdings between liquid working capital and an idle yield position (JLP). Rebalances hourly. Adjusts the working/idle split daily based on real spending patterns — so you never run out of liquid funds and idle money is always working.
+USDC wallet that maintains a configurable split between liquid USDC (working capital) and JLP (idle capital earning yield). The split rebalances automatically on a schedule and adjusts its own target ratio based on how often liquid funds actually get used.
 
 ---
 
@@ -8,41 +8,43 @@ Autonomous Solana stablecoin wallet. Splits your USDC holdings between liquid wo
 
 ### Capital split
 
-Your holdings are tracked in two buckets:
+Holdings are divided into two positions on the primary Solana wallet:
 
-| Bucket | Token | Role |
-|--------|-------|------|
-| Working capital | USDC | Liquid — ready to send immediately |
-| Idle capital | JLP (Jupiter Liquidity Pool) | Yield-bearing — earns trading fees |
+| Position | Token | Role |
+|----------|-------|------|
+| Working capital | USDC | Liquid — available to send immediately |
+| Idle capital | JLP (Jupiter Liquidity Pool token) | Yield-bearing — earns LP fees passively |
 
-The **target ratio** (`tr`) controls what fraction of total value sits in JLP. Default is 50%. Range is 10%–90%.
+The **target ratio** (`tr`) is the fraction of total value held in JLP. Default: `0.5` (50%). Clamped to `[0.10, 0.90]`.
 
 ### Hourly rebalance
 
-Every hour, plant-wallet checks whether the current JLP/USDC split has drifted more than 2% from the target ratio. If it has, it swaps USDC↔JLP via Jupiter to restore the target. Swaps below $1 are skipped.
+Every hour the server reads on-chain balances, computes the current JLP/total ratio, and compares it to `tr`. If the drift exceeds 2%, it executes a swap via Jupiter:
 
-- JLP ratio too high → sell JLP, receive USDC
-- USDC ratio too high → buy JLP with USDC
+- Current ratio > `tr` by >2%: sell JLP → USDC
+- Current ratio < `tr` by >2%: buy JLP with USDC
+
+Swaps with a notional value below $1 are skipped.
 
 ### Daily ratio adjustment
 
-Every midnight UTC, plant-wallet looks at how many hours in the past day required a JLP redemption to cover a send request. It adjusts the target ratio based on that usage:
+At midnight UTC, the server counts how many distinct hours in the past day required a JLP redemption to cover a send (i.e. USDC balance was insufficient). Based on that redemption rate:
 
-| Redemption rate | Action |
-|-----------------|--------|
-| > 20% of hours | Raise JLP ratio by 5% (less liquid needed → put more in yield) |
-| < 5% of hours | Lower JLP ratio by 5% (more liquid needed → keep more in USDC) |
+| Redemption rate | Adjustment |
+|-----------------|------------|
+| > 20% of hours | Increase `tr` by 5% — more JLP, less idle USDC |
+| < 5% of hours | Decrease `tr` by 5% — more USDC, less JLP |
 | 5%–20% | No change |
 
-This means the wallet learns your spending patterns and self-optimises over time.
+Over time this converges the split toward your actual spending pattern.
 
-### Sending USDC
+### Send flow
 
-When you call `POST /send`, the wallet:
-1. Checks if USDC balance covers the amount
-2. If not, redeems just enough JLP (+ 1% slippage buffer) to cover the shortfall
-3. Sends USDC via Zerion CLI
-4. Records the redemption hour for daily ratio tracking
+`POST /send` triggers:
+
+1. If USDC balance ≥ requested amount: send directly.
+2. If USDC balance < requested amount: redeem enough JLP to cover the shortfall (with a 1% slippage buffer), then send.
+3. Record which UTC hour the redemption occurred (deduplicated) for the daily ratio tracker.
 
 ---
 
@@ -50,70 +52,78 @@ When you call `POST /send`, the wallet:
 
 ```
 plant-wallet/
-├── primary wallet    — holds USDC + JLP, executes all swaps and sends
-├── reserve wallet    — secondary wallet (managed separately)
-├── Express server    — HTTP API on port 4000
-├── Hourly cron       — rebalance (0 * * * *)
-├── Daily cron        — ratio adjust (0 0 * * *)
-└── data/wallet-state.json — persists state across restarts
+├── src/
+│   ├── index.ts           Express server, bootstrap checks
+│   ├── lib/
+│   │   ├── jupiter.ts     Jupiter Ultra API — swap quotes and execution
+│   │   ├── rpc.ts         Solana RPC — on-chain balance reads
+│   │   └── zerion.ts      Zerion CLI — wallet list, USDC send
+│   ├── services/
+│   │   ├── wallet.ts      State load/save/sync
+│   │   ├── swap.ts        USDC↔JLP swap execution
+│   │   ├── rebalance.ts   Hourly rebalance logic
+│   │   └── ratioAdjust.ts Daily ratio adjustment logic
+│   ├── routes/
+│   │   ├── status.ts      GET /
+│   │   └── send.ts        POST /send
+│   └── cron/
+│       ├── hourly.ts      0 * * * *  — rebalance
+│       └── daily.ts       0 0 * * *  — ratio adjust
+└── data/
+    └── wallet-state.json  Persisted state
 ```
 
-Swaps go through the Jupiter Ultra API. Wallet operations (send, list) go through the Zerion CLI.
+Two wallets are required:
+- `primary` — holds USDC and JLP, executes swaps and sends
+- `reserve` — secondary wallet, currently used for address tracking
 
 ---
 
-## Prerequisites
+## Requirements
 
 - Node.js ≥ 20
-- Zerion CLI installed globally:
-  ```bash
-  npm install -g zerion-cli
-  ```
-- A Zerion API key — get one at [dashboard.zerion.io](https://dashboard.zerion.io)
-- A Jupiter API key — get one at [jup.ag](https://jup.ag)
-- A Solana RPC endpoint — [Helius](https://helius.dev) recommended for reliability
+- `zerion-cli` installed globally (`npm install -g zerion-cli`)
+- Zerion API key — [dashboard.zerion.io](https://dashboard.zerion.io)
+- Jupiter API key — [jup.ag](https://jup.ag)
+- Solana RPC endpoint — [Helius](https://helius.dev) recommended
 
 ---
 
 ## Setup
 
-### 1. Install Zerion CLI
+**1. Install Zerion CLI**
 
 ```bash
 npm install -g zerion-cli
 ```
 
-### 2. Configure Zerion API key
+**2. Configure Zerion API key**
 
 ```bash
 zerion config set apiKey zk_...
 ```
 
-### 3. Create agent policy
-
-Allows the CLI to sign transactions on Solana without passphrase prompts.
+**3. Create an agent policy** (allows unattended Solana transactions)
 
 ```bash
 zerion agent create-policy --name agent-policy --chains solana --expires 365000d
 ```
 
-### 4. Create wallets
+**4. Create wallets**
 
 ```bash
 zerion wallet create --name primary
 zerion wallet create --name reserve
 ```
 
-### 5. Set up environment
+**5. Configure environment**
 
 ```bash
 cp .env.example .env
-# edit .env with your JUP_API_KEY and RPC_URL
+# fill in JUP_API_KEY and RPC_URL
 ```
 
-### 6. Fund the primary wallet
-
-Get the deposit address:
+**6. Get primary wallet deposit address**
 
 ```bash
 zerion wallet fund --wallet primary
@@ -121,33 +131,25 @@ zerion wallet fund --wallet primary
 
 Send USDC to that address on Solana mainnet.
 
-### 7. Install dependencies and start
+**7. Install and start**
 
 ```bash
 npm install
 npm run dev
 ```
 
-Server starts on `http://localhost:4000`.
+Server on `http://localhost:4000`.
 
 ---
 
 ## Environment variables
 
-Create a `.env` file in the `plant-wallet/` directory:
-
-```env
-JUP_API_KEY=your_jupiter_api_key
-RPC_URL=https://mainnet.helius-rpc.com/?api-key=your_helius_key
-PORT=4000
-```
-
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `JUP_API_KEY` | **Yes** | — | Jupiter swap API key ([jup.ag](https://jup.ag)) |
-| `RPC_URL` | No | Solana mainnet public RPC | Custom Solana RPC endpoint. Helius recommended for reliability. |
+| `JUP_API_KEY` | Yes | — | Jupiter API key |
+| `RPC_URL` | No | `https://api.mainnet-beta.solana.com` | Solana RPC endpoint |
 | `PORT` | No | `4000` | HTTP server port |
-| `ZERION_API_KEY` | **Yes** | — | Set via `zerion config set apiKey` or as env var. Required for wallet sends. |
+| `ZERION_API_KEY` | Yes | — | Zerion API key — set via `zerion config set apiKey` or directly as env var |
 
 ---
 
@@ -179,66 +181,65 @@ Returns current wallet state.
 }
 ```
 
+---
+
 ### `POST /send`
 
-Send USDC from the primary wallet. Automatically redeems JLP if working capital is insufficient.
+Send USDC from the primary wallet. Redeems JLP automatically if USDC balance is insufficient.
 
-**Request body:**
+**Request**
 ```json
-{
-  "to": "SolanaAddressHere...",
-  "amount": 50.00
-}
+{ "to": "<solana-address>", "amount": 50.00 }
 ```
 
-**Response:**
+**Response**
 ```json
-{
-  "ok": true,
-  "signature": "5KtPn1...",
-  "usdcSent": 50.00
-}
+{ "ok": true, "signature": "5KtPn1...", "usdcSent": 50.00 }
 ```
 
-**Error responses:**
-- `400` — invalid address or negative amount
-- `400` — insufficient funds (USDC + JLP combined)
-- `500` — swap or send failed
+**Errors**
+
+| Status | Condition |
+|--------|-----------|
+| `400` | Invalid Solana address |
+| `400` | `amount` ≤ 0 or wrong type |
+| `400` | Insufficient funds (USDC + JLP combined) |
+| `500` | Swap or send failed |
 
 ---
 
 ## State file
 
-State persists to `data/wallet-state.json` and survives restarts.
+`data/wallet-state.json` persists across restarts.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `usdc` | number | Liquid USDC balance |
-| `ausdc` | number | JLP position value in USDC terms |
-| `tr` | number | Target ratio (JLP / total), 0.10–0.90 |
-| `redemptionHours` | number | Hours today that required JLP redemption |
-| `lastRedemptionHour` | number | UTC hour of last redemption (dedup guard) |
-| `lastRebalancedAt` | ISO string | Timestamp of last rebalance |
-| `lastRatioAdjustedAt` | ISO string | Timestamp of last ratio adjustment |
-| `primaryWallet` | string | Solana address of primary wallet |
-| `reserveWallet` | string | Solana address of reserve wallet |
+| `ausdc` | number | JLP position value in USDC |
+| `tr` | number | Target JLP ratio, range `[0.10, 0.90]` |
+| `redemptionHours` | number | Hours this day with a JLP redemption |
+| `lastRedemptionHour` | number | UTC hour of last redemption (dedup) |
+| `lastRebalancedAt` | ISO string | Last rebalance timestamp |
+| `lastRatioAdjustedAt` | ISO string | Last ratio adjustment timestamp |
+| `primaryWallet` | string | Solana address, primary |
+| `reserveWallet` | string | Solana address, reserve |
 
 ---
 
-## Cron schedule
+## Cron
 
-| Schedule | Task |
-|----------|------|
-| `0 * * * *` (hourly) | Sync balances from chain, rebalance USDC↔JLP if drift > 2% |
-| `0 0 * * *` (daily midnight UTC) | Adjust target ratio based on redemption rate, reset `redemptionHours` |
+| Expression | Task |
+|------------|------|
+| `0 * * * *` | Sync on-chain balances, rebalance if drift > 2% |
+| `0 0 * * *` | Adjust target ratio, reset `redemptionHours` |
 
 ---
 
 ## Scripts
 
-| Script | Command |
-|--------|---------|
-| `npm run dev` | `ts-node src/index.ts` — development with live TypeScript |
-| `npm run build` | `tsc` — compile to `dist/` |
-| `npm start` | `node dist/index.js` — production |
-| `npm run typecheck` | `tsc --noEmit` — type check without compiling |
+```
+npm run dev        ts-node src/index.ts
+npm run build      tsc
+npm start          node dist/index.js
+npm run typecheck  tsc --noEmit
+```

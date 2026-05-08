@@ -1,41 +1,38 @@
 # wallet-ui
 
-Next.js 16 / React 19 web interface for Zerion wallet operations. Demonstrates how any web application — or an agent with browser access — can use Zerion wallet infrastructure through the cli-wrapper HTTP API, without touching the CLI directly.
-
-Use this as a reference for building your own web frontend on top of cli-wrapper.
+Next.js 16 / React 19 frontend for Zerion wallet operations. Talks to [cli-wrapper](../cli-wrapper/README.md) over HTTP. Serves as a reference implementation for building web interfaces on top of cli-wrapper.
 
 ---
 
-## Prerequisites
+## Requirements
 
 - Node.js ≥ 20
-- cli-wrapper running on `http://localhost:3000` — see [cli-wrapper/README.md](../cli-wrapper/README.md)
+- cli-wrapper running on `http://localhost:3000`
 
 ---
 
-## Install & run
+## Running
 
 ```bash
-cd wallet-ui
 npm install
 npm run dev
 ```
 
-Opens at `http://localhost:3001` (Next.js auto-selects next available port if 3000 is taken by cli-wrapper).
+Starts on `http://localhost:3001` by default (Next.js will increment the port if 3000 is already taken).
 
 ---
 
 ## Environment variables
 
-No environment variables required. The UI talks to cli-wrapper at `http://localhost:3000` — if you need to change that, update the API base URL in the source.
+None required. API base URL is hardcoded to `http://localhost:3000` — change it in the source if needed.
 
 ---
 
 ## Scripts
 
-| Script | Command |
-|--------|---------|
-| `npm run dev` | Next.js dev server with hot reload |
-| `npm run build` | Production build |
-| `npm start` | Start production server |
-| `npm run lint` | ESLint |
+```
+npm run dev      next dev
+npm run build    next build
+npm start        next start
+npm run lint     eslint
+```
