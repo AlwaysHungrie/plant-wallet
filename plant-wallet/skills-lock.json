@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "skills": {
+    "integrating-jupiter": {
+      "source": "jup-ag/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/integrating-jupiter/SKILL.md",
+      "computedHash": "7090ec407918002966ba3c2cbf22f60233c70cb7c1eed6df58170d3b87592c92"
+    },
+    "jupiter-lend": {
+      "source": "jup-ag/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/jupiter-lend/SKILL.md",
+      "computedHash": "7b321b83d4d9024462f97acf4d15b00435def355e5c83dbe5cd230e369112968"
+    },
+    "zerion": {
+      "source": "zeriontech/zerion-ai",
+      "sourceType": "github",
+      "skillPath": "skills/zerion/SKILL.md",
+      "computedHash": "dbab037b7f9a0c82ca24d26d1baca71b1ebc109f2cc465d6b738ab02704dc3a9"
+    },
+    "zerion-agent-management": {
+      "source": "zeriontech/zerion-ai",
+      "sourceType": "github",
+      "skillPath": "skills/zerion-agent-management/SKILL.md",
+      "computedHash": "781d7d16934e4d7d62aaeb7edbdac20d0996b72219dcc0e4ff459c8dc638e44a"
+    },
+    "zerion-analyze": {
+      "source": "zeriontech/zerion-ai",
+      "sourceType": "github",
+      "skillPath": "skills/zerion-analyze/SKILL.md",
+      "computedHash": "5fa51722265179975c80a48f51a36cb2cc72f4b0c7f04f81cf5ddfc19a4474bd"
+    },
+    "zerion-partner-skill-creator": {
+      "source": "zeriontech/zerion-ai",
+      "sourceType": "github",
+      "skillPath": "skills/zerion-partner-skill-creator/SKILL.md",
+      "computedHash": "082cc9d312d7521ea6dd3de74179f7908d494131645eced1dcc67678989bfcf0"
+    },
+    "zerion-sign": {
+      "source": "zeriontech/zerion-ai",
+      "sourceType": "github",
+      "skillPath": "skills/zerion-sign/SKILL.md",
+      "computedHash": "8f3ad6aa8ad7d138b9cd53a06bd3e36df351ac1abe351db30a0aeb27f239ee56"
+    },
+    "zerion-trading": {
+      "source": "zeriontech/zerion-ai",
+      "sourceType": "github",
+      "skillPath": "skills/zerion-trading/SKILL.md",
+      "computedHash": "433ab0828138c78225cccbeda392b1d61798e2586e2c895ba208c0b3a390eaa7"
+    },
+    "zerion-trails-crosschainswap": {
+      "source": "zeriontech/zerion-ai",
+      "sourceType": "github",
+      "skillPath": "skills/zerion-trails-crosschainswap/SKILL.md",
+      "computedHash": "7d89b2ff7d2f2dbb9adeb91d9c224bb9b5b576228e8cdc2545d5abae8a6db0f9"
+    },
+    "zerion-trails-deposit": {
+      "source": "zeriontech/zerion-ai",
+      "sourceType": "github",
+      "skillPath": "skills/zerion-trails-deposit/SKILL.md",
+      "computedHash": "3464ca7e0959aeb8679ea4576d98499da7d2119f7d694547d5f446f0c0ae2dfa"
+    },
+    "zerion-wallet": {
+      "source": "zeriontech/zerion-ai",
+      "sourceType": "github",
+      "skillPath": "skills/zerion-wallet/SKILL.md",
+      "computedHash": "ffd5ca40ef39b5d9e2bd6429404fd833ad6a916ed0b0f3ebded39b22027c0fe3"
+    }
+  }
+}
