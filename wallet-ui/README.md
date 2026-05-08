@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# wallet-ui
 
-## Getting Started
+Next.js 16 / React 19 web interface for Zerion wallet operations. Demonstrates how any web application — or an agent with browser access — can use Zerion wallet infrastructure through the cli-wrapper HTTP API, without touching the CLI directly.
 
-First, run the development server:
+Use this as a reference for building your own web frontend on top of cli-wrapper.
+
+---
+
+## Prerequisites
+
+- Node.js ≥ 20
+- cli-wrapper running on `http://localhost:3000` — see [cli-wrapper/README.md](../cli-wrapper/README.md)
+
+---
+
+## Install & run
 
 ```bash
+cd wallet-ui
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Opens at `http://localhost:3001` (Next.js auto-selects next available port if 3000 is taken by cli-wrapper).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment variables
 
-## Learn More
+No environment variables required. The UI talks to cli-wrapper at `http://localhost:3000` — if you need to change that, update the API base URL in the source.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Scripts
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Script | Command |
+|--------|---------|
+| `npm run dev` | Next.js dev server with hot reload |
+| `npm run build` | Production build |
+| `npm start` | Start production server |
+| `npm run lint` | ESLint |
