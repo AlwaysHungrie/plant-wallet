@@ -2,7 +2,11 @@
 
 Hono HTTP server that runs Zerion CLI commands via `node-pty`. Exposes both non-interactive commands and interactive ones (passphrase prompts, numbered menus, multi-select) as JSON endpoints.
 
-Useful when you want to drive wallet operations from an agent, a bot, or a web backend without shelling out to the CLI yourself.
+It is useful to develop agents and applications which can have
+
+- insolated wallet infrastructure
+- running on edge devices
+- serverless and interfaceless on telegram, discord etc.
 
 ---
 
@@ -45,6 +49,7 @@ Some CLI commands open a prompt loop — passphrases, choice menus, checkboxes. 
 Runs a `zerion wallet` subcommand. Subcommands: `create`, `import`, `list`, `fund`, `backup`, `delete`, `sync`.
 
 **Body**
+
 ```json
 {
   "subcommand": "create",
@@ -65,6 +70,7 @@ curl -X POST http://localhost:3000/wallet/run \
 Sends a text response to an active prompt (passphrase, free-form input).
 
 **Body**
+
 ```json
 {
   "terminalId": "8eebf62f-136b-49fe-a7fc-4ec8e2e46b91",
@@ -79,6 +85,7 @@ Sends a text response to an active prompt (passphrase, free-form input).
 Selects one item from a numbered list (0-indexed).
 
 **Body**
+
 ```json
 {
   "terminalId": "8eebf62f-136b-49fe-a7fc-4ec8e2e46b91",
@@ -93,6 +100,7 @@ Selects one item from a numbered list (0-indexed).
 Submits a multi-select response. `choices` is a boolean array with one entry per option.
 
 **Body**
+
 ```json
 {
   "terminalId": "8eebf62f-136b-49fe-a7fc-4ec8e2e46b91",
@@ -106,8 +114,8 @@ Submits a multi-select response. `choices` is a boolean array with one entry per
 
 cli-wrapper itself requires no environment variables. The server inherits the shell environment, so variables like `ZERION_API_KEY` are passed through to CLI subprocesses automatically.
 
-| Variable | Source | Purpose |
-|----------|--------|---------|
+| Variable         | Source             | Purpose                           |
+| ---------------- | ------------------ | --------------------------------- |
 | `ZERION_API_KEY` | Shell / parent env | Zerion API auth, forwarded to CLI |
 
 ---
